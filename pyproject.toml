@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-md-scope = "src.cli:app"
+md-scope = "src.cli:run"
 
 [project.optional-dependencies]
 dev = [

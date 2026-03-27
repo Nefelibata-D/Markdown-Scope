@@ -10,7 +10,7 @@ from .config import cfg_path, cfg_value, load_config
 from .exceptions import MDScopeError
 from .index_builder import BuildOptions, build_index
 from .index_updater import update_index
-from .reader import read_lines, read_section
+from .reader import read_lines, read_section, read_sections_contextual
 from .searcher import search_index
 from .summary.providers import provider_from_name
 from .utils import (
@@ -63,21 +63,21 @@ def _build_progress_cb():
                 err=True,
             )
             typer.echo(
-                f"  ├─ lines: {event['line_count']}, sections: {event['section_count']}, top-level: {event['top_level_count']}",
+                f"  |- lines: {event['line_count']}, sections: {event['section_count']}, top-level: {event['top_level_count']}",
                 err=True,
             )
         elif event_type == "top_section_start":
             typer.echo(
-                f"  ├─ [{event['top_index']}/{event['top_total']}] summarize top-section: {event['title']} (pending={event['pending_count']})",
+                f"  |- [{event['top_index']}/{event['top_total']}] summarize top-section: {event['title']} (pending={event['pending_count']})",
                 err=True,
             )
         elif event_type == "top_section_done":
             typer.echo(
-                f"  │  └─ done: {event['title']}",
+                f"  |  `- done: {event['title']}",
                 err=True,
             )
         elif event_type == "file_done":
-            typer.echo("  └─ file done", err=True)
+            typer.echo("  `- file done", err=True)
 
     return cb
 
@@ -105,13 +105,24 @@ def _compact_sections(file_name: str, line_count: int, sections: list[dict], ful
     return rows
 
 
+def _list_md_files(root: Path, target: str | None = None) -> list[str]:
+    base = root
+    if target:
+        base = root / target
+    if not base.exists():
+        raise typer.BadParameter(f"Target path not found: {base}")
+    if base.is_file():
+        return [base.relative_to(root).as_posix()] if base.suffix.lower() == ".md" else []
+    return sorted([p.relative_to(root).as_posix() for p in base.rglob("*.md") if p.is_file()])
+
+
 @app.command("build")
 def build_cmd(
     config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
     root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
     index: Optional[Path] = typer.Option(None, help="Index output path, defaults to ROOT/.mdx-index.json"),
     overwrite: Optional[bool] = typer.Option(None, help="Overwrite existing index file."),
-    include: Optional[list[str]] = typer.Option(None, help="Glob patterns under root, e.g. '*.md' or 'reference/**/*.md'."),
+    include: Optional[list[str]] = typer.Option(None, help="Glob patterns under root, e.g. '*.md' or 'references/**/*.md'."),
     provider: Optional[str] = typer.Option(None, help="Summary provider: openai-compatible"),
     api_base: Optional[str] = typer.Option(None, help="OpenAI compatible base URL"),
     api_key: Optional[str] = typer.Option(None, help="API key"),
@@ -238,14 +249,14 @@ def update_cmd(
     _emit({"index_path": str(idx_path), "stats": updated.stats.model_dump(), "provider": updated.provider}, output_format)
 
 
-@app.command("view")
-def view_cmd(
-    config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
-    root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
-    index: Optional[Path] = typer.Option(None),
-    target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
-    full: bool = typer.Option(False, help="Include line_count/level/start/end fields in JSON output."),
-    output_format: Optional[str] = typer.Option(None, "--format"),
+def _outline_impl(
+    *,
+    config: Optional[Path],
+    root: Optional[Path],
+    index: Optional[Path],
+    target: Optional[str],
+    full: bool,
+    output_format: Optional[str],
 ) -> None:
     cfg = load_config(config)
     root = _require_root(cfg_path(cfg, "root", root))
@@ -269,6 +280,63 @@ def view_cmd(
         raise typer.BadParameter("format must be json|text|markdown")
 
 
+@app.command("outline")
+def outline_cmd(
+    config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
+    root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
+    index: Optional[Path] = typer.Option(None),
+    target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
+    full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
+    output_format: Optional[str] = typer.Option(None, "--format"),
+) -> None:
+    _outline_impl(
+        config=config,
+        root=root,
+        index=index,
+        target=target,
+        full=full,
+        output_format=output_format,
+    )
+
+
+@app.command("catalog")
+def catalog_cmd(
+    config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
+    root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
+    index: Optional[Path] = typer.Option(None),
+    target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
+    full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
+    output_format: Optional[str] = typer.Option(None, "--format"),
+) -> None:
+    _outline_impl(
+        config=config,
+        root=root,
+        index=index,
+        target=target,
+        full=full,
+        output_format=output_format,
+    )
+
+
+@app.command("view", hidden=True)
+def view_alias_cmd(
+    config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
+    root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
+    index: Optional[Path] = typer.Option(None),
+    target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
+    full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
+    output_format: Optional[str] = typer.Option(None, "--format"),
+) -> None:
+    _outline_impl(
+        config=config,
+        root=root,
+        index=index,
+        target=target,
+        full=full,
+        output_format=output_format,
+    )
+
+
 @app.command("search")
 def search_cmd(
     config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
@@ -277,7 +345,7 @@ def search_cmd(
     index: Optional[Path] = typer.Option(None),
     field: Optional[str] = typer.Option(None, help="all|title|path|summary"),
     target: Optional[str] = typer.Option(None, help="Limit to file or directory target"),
-    full: bool = typer.Option(False, help="Include line_count/level/start/end fields in JSON output."),
+    full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
     output_format: Optional[str] = typer.Option(None, "--format"),
 ) -> None:
     cfg = load_config(config)
@@ -341,47 +409,97 @@ def read_lines_cmd(
 def read_section_cmd(
     config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
     root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
-    section_id: str = typer.Option(..., "--id"),
+    section_ids: list[str] = typer.Option(..., "--id"),
     index: Optional[Path] = typer.Option(None),
     max_lines: Optional[int] = typer.Option(None),
+    mode: str = typer.Option("simple", help="Read mode: simple|contextual"),
     output_format: Optional[str] = typer.Option(None, "--format"),
 ) -> None:
     cfg = load_config(config)
     root = _require_root(cfg_path(cfg, "root", root))
     index = cfg_path(cfg, "index", index)
     max_lines = int(cfg_value(cfg, "max_lines", max_lines, 600))
+    mode = cfg_value(cfg, "mode", mode, "simple")
     output_format = cfg_value(cfg, "format", output_format, "json")
+    if mode not in {"simple", "contextual"}:
+        raise typer.BadParameter("mode must be simple|contextual")
 
     idx = read_index(_resolve_index_path(root, index))
-    payload = read_section(idx, root, section_id, max_lines=max_lines)
+    if mode == "contextual":
+        payload = read_sections_contextual(idx, root, section_ids, max_lines=max_lines)
+        if output_format == "text":
+            if "files" in payload:
+                chunks: list[str] = []
+                for file_payload in payload["files"]:
+                    chunks.append(f"[file: {file_payload['file_name']}]\n{file_payload['content']}")
+                _emit("\n\n".join(chunks), "text")
+            else:
+                _emit(payload["content"], "text")
+        else:
+            _emit(payload, "json")
+        return
+
+    payloads: list[dict] = []
+    errors: list[dict] = []
+    for section_id in section_ids:
+        try:
+            payloads.append(
+                read_section(
+                    idx,
+                    root,
+                    section_id,
+                    max_lines=max_lines,
+                )
+            )
+        except MDScopeError as exc:
+            errors.append({"id": section_id, "error": str(exc)})
+
+    if len(section_ids) == 1 and errors:
+        raise MDScopeError(errors[0]["error"])
+
     if output_format == "text":
-        _emit(payload["content"], "text")
+        if len(section_ids) == 1 and len(payloads) == 1 and not errors:
+            _emit(payloads[0]["content"], "text")
+        else:
+            chunks = [f"## {p['id']} ({p['title']})\nfile: {p['file_name']}\n{p['content']}" for p in payloads]
+            if errors:
+                chunks.extend([f"## {item['id']} (error)\n{item['error']}" for item in errors])
+            _emit("\n\n".join(chunks), "text")
     else:
-        _emit(payload, "json")
+        if len(section_ids) == 1:
+            _emit(payloads[0], "json")
+        else:
+            _emit({"results": payloads, "errors": errors}, "json")
 
 
-@app.command("export-md")
-def export_md_cmd(
+@app.command("md-files")
+def md_files_cmd(
     config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
     root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
-    index: Optional[Path] = typer.Option(None),
-    target: Optional[str] = typer.Option(None),
-    output: Optional[Path] = typer.Option(None, help="Output markdown file path"),
+    target: Optional[str] = typer.Option(None, help="Optional subdirectory under root."),
+    output_format: Optional[str] = typer.Option(None, "--format"),
 ) -> None:
     cfg = load_config(config)
     root = _require_root(cfg_path(cfg, "root", root))
-    index = cfg_path(cfg, "index", index)
     target = cfg_value(cfg, "target", target, None)
-    output = cfg_path(cfg, "output", output)
+    output_format = cfg_value(cfg, "format", output_format, "json")
 
-    idx = read_index(_resolve_index_path(root, index))
-    view_data = select_view(idx, target=target)
-    md = render_catalog_markdown(view_data)
-    if output:
-        output.write_text(md, encoding="utf-8")
-        typer.echo(str(output))
+    files = _list_md_files(root, target=target)
+    payload = {
+        "root": str(root),
+        "target": target,
+        "md_files": [{"path": f, "type": "markdown", "viewable_by_tool": True} for f in files],
+    }
+    if output_format == "json":
+        _emit(payload, "json")
+    elif output_format == "text":
+        _emit("\n".join(files) if files else "(no markdown files)", "text")
+    elif output_format == "markdown":
+        lines = ["# Markdown Files", ""]
+        lines.extend([f"- `{f}`" for f in files] if files else ["- _none_"])
+        _emit("\n".join(lines), "markdown")
     else:
-        typer.echo(md)
+        raise typer.BadParameter("format must be json|text|markdown")
 
 
 @app.callback()
@@ -394,7 +512,7 @@ def run() -> int:
         app()
         return 0
     except MDScopeError as exc:
-        typer.echo(json.dumps({"error": str(exc)}, ensure_ascii=False))
+        typer.echo(f"Error: {exc}", err=True)
         return 2
 
 

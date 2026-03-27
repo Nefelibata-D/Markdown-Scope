@@ -43,8 +43,8 @@ def _build_matcher(field: str, query: str):
     if field == "path":
         return lambda _s, p: query in p.lower()
     if field == "summary":
-        return lambda s, _p: query in s.summary.lower()
-    return lambda s, p: query in s.title.lower() or query in p.lower() or query in s.summary.lower()
+        return lambda s, _p: query in (s.summary or "").lower()
+    return lambda s, p: query in s.title.lower() or query in p.lower() or query in (s.summary or "").lower()
 
 
 def _normalize_target(target: str | None) -> tuple[str | None, str | None]:

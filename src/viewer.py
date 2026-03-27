@@ -69,7 +69,7 @@ def render_catalog_markdown(view_data: dict, title: str = "Markdown Scope Catalo
 
 def _render_section_markdown(section: dict, lines: list[str], depth: int) -> None:
     bullet_indent = "  " * depth
-    summary = section.get("summary", "").replace("\n", " ").strip()
+    summary = (section.get("summary") or "").replace("\n", " ").strip()
     lines.append(
         f"{bullet_indent}- **{section['title']}**  "
         f"(id: `{section['id']}`, lines: `{section['start']}-{section['end']}`)"

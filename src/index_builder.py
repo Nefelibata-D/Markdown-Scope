@@ -27,7 +27,6 @@ class SummaryGroup:
     key: str
     group_title: str
     context_ancestor_id: str | None
-    context_start: int | None
     target_ids: list[str]
     top_target_ids: list[str]
 
@@ -276,13 +275,6 @@ def _build_section_tree(
     return node, pending
 
 
-def _fill_summaries(node: SectionNode, summary_map: dict[str, str]) -> None:
-    if node.id in summary_map and summary_map[node.id].strip():
-        node.summary = summary_map[node.id].strip()
-    for child in node.children:
-        _fill_summaries(child, summary_map)
-
-
 def _set_summary_and_status_by_id(nodes: list[SectionNode], section_id: str, summary: str) -> bool:
     for node in nodes:
         if node.id == section_id:
@@ -366,7 +358,6 @@ def _build_summary_groups(
 
     def walk(
         node: SectionNode,
-        ancestors: list[SectionNode],
         current_summary_root: SectionNode | None,
         current_context_ancestor: SectionNode | None,
     ) -> None:
@@ -386,12 +377,10 @@ def _build_summary_groups(
                 group_key = current_context_ancestor.id
                 group_title = current_context_ancestor.title
                 context_id = current_context_ancestor.id
-                context_start = current_context_ancestor.start
             else:
                 group_key = current_summary_root.id
                 group_title = current_summary_root.title
                 context_id = None
-                context_start = None
 
             group = groups.get(group_key)
             if group is None:
@@ -399,7 +388,6 @@ def _build_summary_groups(
                     key=group_key,
                     group_title=group_title,
                     context_ancestor_id=context_id,
-                    context_start=context_start,
                     target_ids=[],
                     top_target_ids=[],
                 )
@@ -409,10 +397,10 @@ def _build_summary_groups(
                 group.top_target_ids.append(node.id)
 
         for child in node.children:
-            walk(child, [*ancestors, node], current_summary_root, current_context_ancestor)
+            walk(child, current_summary_root, current_context_ancestor)
 
     for root in roots:
-        walk(root, [], None, None)
+        walk(root, None, None)
     return list(groups.values())
 
 
