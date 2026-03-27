@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from typing import Optional
 
 import typer
@@ -31,9 +32,21 @@ def _emit(data, output_format: str = "json") -> None:
     if output_format == "json":
         typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
     elif output_format == "text":
-        typer.echo(data if isinstance(data, str) else str(data))
+        text = data if isinstance(data, str) else str(data)
+        try:
+            typer.echo(text)
+        except UnicodeEncodeError:
+            encoding = sys.stdout.encoding or "utf-8"
+            safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+            typer.echo(safe)
     elif output_format == "markdown":
-        typer.echo(data if isinstance(data, str) else str(data))
+        text = data if isinstance(data, str) else str(data)
+        try:
+            typer.echo(text)
+        except UnicodeEncodeError:
+            encoding = sys.stdout.encoding or "utf-8"
+            safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+            typer.echo(safe)
     else:
         raise typer.BadParameter(f"Unsupported format: {output_format}")
 
@@ -120,13 +133,15 @@ def _list_md_files(root: Path, target: str | None = None) -> list[str]:
 def build_cmd(
     config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
     root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
-    index: Optional[Path] = typer.Option(None, help="Index output path, defaults to ROOT/.mdx-index.json"),
+    index: Optional[Path] = typer.Option(None, help="Index output path, defaults to ROOT/.md-scope-index.json"),
     overwrite: Optional[bool] = typer.Option(None, help="Overwrite existing index file."),
     include: Optional[list[str]] = typer.Option(None, help="Glob patterns under root, e.g. '*.md' or 'references/**/*.md'."),
     provider: Optional[str] = typer.Option(None, help="Summary provider: openai-compatible"),
     api_base: Optional[str] = typer.Option(None, help="OpenAI compatible base URL"),
     api_key: Optional[str] = typer.Option(None, help="API key"),
     model: Optional[str] = typer.Option(None, help="Model name"),
+    api_timeout_seconds: Optional[float] = typer.Option(None, help="AI request timeout in seconds."),
+    api_requests_per_minute: Optional[int] = typer.Option(None, help="Max AI requests per minute."),
     system_prompt: Optional[str] = typer.Option(None, help="AI system prompt."),
     user_prompt: Optional[str] = typer.Option(None, help="AI user prompt template."),
     summary_root_level: Optional[int] = typer.Option(None, help="Summary root heading level, default 2."),
@@ -145,6 +160,8 @@ def build_cmd(
     api_base = cfg_value(cfg, "api_base", api_base, None)
     api_key = cfg_value(cfg, "api_key", api_key, None)
     model = cfg_value(cfg, "model", model, None)
+    api_timeout_seconds = cfg_value(cfg, "api_timeout_seconds", api_timeout_seconds, 30.0)
+    api_requests_per_minute = cfg_value(cfg, "api_requests_per_minute", api_requests_per_minute, None)
     system_prompt = cfg_value(cfg, "system_prompt", system_prompt, None)
     user_prompt = cfg_value(cfg, "user_prompt", user_prompt, None)
     summary_root_level = int(cfg_value(cfg, "summary_root_level", summary_root_level, 2))
@@ -163,6 +180,8 @@ def build_cmd(
         api_base=api_base,
         api_key=api_key,
         model=model,
+        timeout_seconds=float(api_timeout_seconds),
+        requests_per_minute=int(api_requests_per_minute) if api_requests_per_minute is not None else None,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
     )
@@ -187,12 +206,14 @@ def build_cmd(
 def update_cmd(
     config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
     root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
-    index: Optional[Path] = typer.Option(None, help="Index path, defaults to ROOT/.mdx-index.json"),
+    index: Optional[Path] = typer.Option(None, help="Index path, defaults to ROOT/.md-scope-index.json"),
     include: Optional[list[str]] = typer.Option(None, help="Glob patterns under root."),
     provider: Optional[str] = typer.Option(None, help="Summary provider: openai-compatible"),
     api_base: Optional[str] = typer.Option(None),
     api_key: Optional[str] = typer.Option(None),
     model: Optional[str] = typer.Option(None),
+    api_timeout_seconds: Optional[float] = typer.Option(None, help="AI request timeout in seconds."),
+    api_requests_per_minute: Optional[int] = typer.Option(None, help="Max AI requests per minute."),
     system_prompt: Optional[str] = typer.Option(None),
     user_prompt: Optional[str] = typer.Option(None),
     summary_root_level: Optional[int] = typer.Option(None, help="Summary root heading level, default 2."),
@@ -210,6 +231,8 @@ def update_cmd(
     api_base = cfg_value(cfg, "api_base", api_base, None)
     api_key = cfg_value(cfg, "api_key", api_key, None)
     model = cfg_value(cfg, "model", model, None)
+    api_timeout_seconds = cfg_value(cfg, "api_timeout_seconds", api_timeout_seconds, 30.0)
+    api_requests_per_minute = cfg_value(cfg, "api_requests_per_minute", api_requests_per_minute, None)
     system_prompt = cfg_value(cfg, "system_prompt", system_prompt, None)
     user_prompt = cfg_value(cfg, "user_prompt", user_prompt, None)
     summary_root_level = cfg_value(cfg, "summary_root_level", summary_root_level, None)
@@ -230,6 +253,8 @@ def update_cmd(
         api_base=api_base,
         api_key=api_key,
         model=model,
+        timeout_seconds=float(api_timeout_seconds),
+        requests_per_minute=int(api_requests_per_minute) if api_requests_per_minute is not None else None,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
     )
@@ -256,6 +281,7 @@ def _outline_impl(
     index: Optional[Path],
     target: Optional[str],
     full: bool,
+    with_summary: bool,
     output_format: Optional[str],
 ) -> None:
     cfg = load_config(config)
@@ -273,9 +299,9 @@ def _outline_impl(
             rows.extend(_compact_sections(file["file_name"], file["line_count"], file["sections"], full))
         _emit(rows, "json")
     elif output_format == "text":
-        _emit(render_tree_text(view_data), "text")
+        _emit(render_tree_text(view_data, with_summary=with_summary), "text")
     elif output_format == "markdown":
-        _emit(render_catalog_markdown(view_data), "markdown")
+        _emit(render_catalog_markdown(view_data, with_summary=with_summary), "markdown")
     else:
         raise typer.BadParameter("format must be json|text|markdown")
 
@@ -287,6 +313,12 @@ def outline_cmd(
     index: Optional[Path] = typer.Option(None),
     target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
     full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
+    with_summary: bool = typer.Option(
+        False,
+        "--with_summary",
+        "--with-summary",
+        help="Include summary text in text/markdown output.",
+    ),
     output_format: Optional[str] = typer.Option(None, "--format"),
 ) -> None:
     _outline_impl(
@@ -295,6 +327,7 @@ def outline_cmd(
         index=index,
         target=target,
         full=full,
+        with_summary=with_summary,
         output_format=output_format,
     )
 
@@ -306,6 +339,12 @@ def catalog_cmd(
     index: Optional[Path] = typer.Option(None),
     target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
     full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
+    with_summary: bool = typer.Option(
+        False,
+        "--with_summary",
+        "--with-summary",
+        help="Include summary text in text/markdown output.",
+    ),
     output_format: Optional[str] = typer.Option(None, "--format"),
 ) -> None:
     _outline_impl(
@@ -314,6 +353,7 @@ def catalog_cmd(
         index=index,
         target=target,
         full=full,
+        with_summary=with_summary,
         output_format=output_format,
     )
 
@@ -325,6 +365,12 @@ def view_alias_cmd(
     index: Optional[Path] = typer.Option(None),
     target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
     full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
+    with_summary: bool = typer.Option(
+        False,
+        "--with_summary",
+        "--with-summary",
+        help="Include summary text in text/markdown output.",
+    ),
     output_format: Optional[str] = typer.Option(None, "--format"),
 ) -> None:
     _outline_impl(
@@ -333,6 +379,7 @@ def view_alias_cmd(
         index=index,
         target=target,
         full=full,
+        with_summary=with_summary,
         output_format=output_format,
     )
 

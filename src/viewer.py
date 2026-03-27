@@ -36,23 +36,33 @@ def _filter_files(files: list[PublicFileIndex], target: str) -> list[PublicFileI
     return matched
 
 
-def render_tree_text(view_data: dict) -> str:
+def render_tree_text(view_data: dict, *, with_summary: bool = False) -> str:
     lines: list[str] = []
     for file in view_data["files"]:
         lines.append(f"{file['file_name']}")
         for section in file["sections"]:
-            _render_section_text(section, lines, depth=1)
+            _render_section_text(section, lines, depth=1, with_summary=with_summary)
     return "\n".join(lines)
 
 
-def _render_section_text(section: dict, lines: list[str], depth: int) -> None:
+def _render_section_text(section: dict, lines: list[str], depth: int, *, with_summary: bool) -> None:
     indent = "  " * depth
-    lines.append(f"{indent}- {section['title']} [{section['start']}-{section['end']}] ({section['id']})")
+    lines.append(
+        f"{indent}- {section['title']} (line: [{section['start']}-{section['end']}]  | id: {section['id']} )"
+    )
+    summary = (section.get("summary") or "").replace("\n", " ").strip()
+    if with_summary and summary:
+        lines.append(f"{indent}  summary: {summary}")
     for child in section["children"]:
-        _render_section_text(child, lines, depth + 1)
+        _render_section_text(child, lines, depth + 1, with_summary=with_summary)
 
 
-def render_catalog_markdown(view_data: dict, title: str = "Markdown Scope Catalog") -> str:
+def render_catalog_markdown(
+    view_data: dict,
+    title: str = "Markdown Scope Catalog",
+    *,
+    with_summary: bool = False,
+) -> str:
     lines: list[str] = [f"# {title}", ""]
     for file in view_data["files"]:
         lines.append(f"## File: `{file['file_name']}`")
@@ -62,18 +72,19 @@ def render_catalog_markdown(view_data: dict, title: str = "Markdown Scope Catalo
             lines.append("")
             continue
         for section in file["sections"]:
-            _render_section_markdown(section, lines, depth=0)
+            _render_section_markdown(section, lines, depth=0, with_summary=with_summary)
         lines.append("")
     return "\n".join(lines).strip() + "\n"
 
 
-def _render_section_markdown(section: dict, lines: list[str], depth: int) -> None:
+def _render_section_markdown(section: dict, lines: list[str], depth: int, *, with_summary: bool) -> None:
     bullet_indent = "  " * depth
     summary = (section.get("summary") or "").replace("\n", " ").strip()
     lines.append(
         f"{bullet_indent}- **{section['title']}**  "
         f"(id: `{section['id']}`, lines: `{section['start']}-{section['end']}`)"
     )
-    lines.append(f"{bullet_indent}  - summary: {summary}")
+    if with_summary:
+        lines.append(f"{bullet_indent}  - summary: {summary}")
     for child in section["children"]:
-        _render_section_markdown(child, lines, depth + 1)
+        _render_section_markdown(child, lines, depth + 1, with_summary=with_summary)

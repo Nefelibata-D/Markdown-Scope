@@ -25,8 +25,8 @@ md-scope --help
 
 For one root directory, `build`/`update` writes:
 
-- Public index: `ROOT/.mdx-index.json`
-- Lock index: `ROOT/.mdx-index.lock.json`
+- Public index: `ROOT/.md-scope-index.json`
+- Lock index: `ROOT/.md-scope-index.lock.json`
 
 Public index is for reading/searching.  
 Lock index keeps internal metadata for `update` reuse.
@@ -40,7 +40,7 @@ Build index from scratch for a root directory.
 Common options:
 
 - `--root`: Markdown root directory
-- `--index`: custom public index path (default `ROOT/.mdx-index.json`)
+- `--index`: custom public index path (default `ROOT/.md-scope-index.json`)
 - `--overwrite`: overwrite existing index
 - `--include`: file glob patterns (repeatable)
 - `--config`: TOML config path
@@ -52,6 +52,8 @@ Summary-related options:
 - `--api-base`
 - `--api-key`
 - `--model`
+- `--api-timeout-seconds`
+- `--api-requests-per-minute`
 - `--system-prompt`
 - `--user-prompt`
 - `--summary-root-level`
@@ -214,7 +216,7 @@ Example:
 ```toml
 [global]
 root = "./examples"
-index = "./examples/.mdx-index.json"
+index = "./examples/.md-scope-index.json"
 include = ["*.md", "**/*.md"]
 overwrite = true
 
@@ -222,6 +224,8 @@ provider = "openai-compatible"
 api_base = "https://api.openai.com/v1"
 api_key = "YOUR_KEY"
 model = "gpt-5-mini"
+api_timeout_seconds = 30
+api_requests_per_minute = 30
 system_prompt = "You are a concise technical summarizer."
 user_prompt = "Summarize in Chinese:\n{content}"
 
@@ -240,6 +244,7 @@ max_lines = 200
   "files": [
     {
       "file-name": "SKILL.md",
+      "path": "SKILL.md",
       "line_count": 100,
       "sections": [
         {

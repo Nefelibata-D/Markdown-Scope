@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 import json
+import time
 from typing import Protocol
 
 import httpx
@@ -44,6 +46,29 @@ class SkippedSummaryProvider:
 
 
 @dataclass
+class RequestRateLimiter:
+    requests_per_minute: int
+    _window_seconds: float = 60.0
+    _request_times: deque[float] = field(default_factory=deque)
+
+    def __post_init__(self) -> None:
+        if self.requests_per_minute <= 0:
+            raise SummaryProviderError("requests_per_minute must be > 0")
+
+    def acquire(self) -> None:
+        while True:
+            now = time.monotonic()
+            while self._request_times and now - self._request_times[0] >= self._window_seconds:
+                self._request_times.popleft()
+            if len(self._request_times) < self.requests_per_minute:
+                self._request_times.append(now)
+                return
+            wait_for = self._window_seconds - (now - self._request_times[0])
+            if wait_for > 0:
+                time.sleep(wait_for)
+
+
+@dataclass
 class OpenAICompatibleSummaryProvider:
     base_url: str
     api_key: str
@@ -51,8 +76,14 @@ class OpenAICompatibleSummaryProvider:
     system_prompt: str
     user_prompt: str
     timeout_seconds: float = 30.0
+    requests_per_minute: int | None = None
     max_retries: int = 2
     name: str = "openai-compatible"
+    _rate_limiter: RequestRateLimiter | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.requests_per_minute is not None:
+            self._rate_limiter = RequestRateLimiter(self.requests_per_minute)
 
     def summarize_many(
         self,
@@ -93,6 +124,8 @@ class OpenAICompatibleSummaryProvider:
         raise SummaryProviderError(f"Summary API failed after retries: {last_error}") from last_error
 
     def _request_summary_map(self, prompt: str, id_to_title: dict[str, str]) -> dict[str, str]:
+        if self._rate_limiter is not None:
+            self._rate_limiter.acquire()
         url = self.base_url.rstrip("/") + "/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         schema = {
@@ -146,6 +179,8 @@ def provider_from_name(
     model: str | None = None,
     system_prompt: str | None = None,
     user_prompt: str | None = None,
+    timeout_seconds: float | None = None,
+    requests_per_minute: int | None = None,
 ) -> SummaryProvider:
     if provider != "openai-compatible":
         return SkippedSummaryProvider(reason=f"unsupported provider '{provider}'")
@@ -170,4 +205,6 @@ def provider_from_name(
         model=model,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
+        timeout_seconds=timeout_seconds if timeout_seconds is not None else 30.0,
+        requests_per_minute=requests_per_minute,
     )

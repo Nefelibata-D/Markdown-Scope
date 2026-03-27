@@ -11,8 +11,8 @@ from .exceptions import IndexNotFoundError, ScopePathError
 from .index_models import PublicFileIndex, PublicIndex, PublicSection, RootIndex, SectionNode
 
 
-DEFAULT_INDEX_NAME = ".mdx-index.json"
-DEFAULT_LOCK_NAME = ".mdx-index.lock.json"
+DEFAULT_INDEX_NAME = ".md-scope-index.json"
+DEFAULT_LOCK_NAME = ".md-scope-index.lock.json"
 
 
 def default_index_path(root: Path) -> Path:
@@ -109,6 +109,7 @@ def to_public_index(index: RootIndex) -> PublicIndex:
         files.append(
             PublicFileIndex(
                 file_name=file.path,
+                path=file.path,
                 line_count=file.line_count,
                 summary_root_level=file.summary_root_level,
                 summary_exclude_levels=file.summary_exclude_levels,
@@ -146,4 +147,6 @@ def _wire_to_public_index_data(data: dict[str, Any]) -> dict[str, Any]:
         for file in files:
             if isinstance(file, dict) and "file-name" in file and "file_name" not in file:
                 file["file_name"] = file.pop("file-name")
+            if isinstance(file, dict) and "path" not in file and "file_name" in file:
+                file["path"] = file["file_name"]
     return data

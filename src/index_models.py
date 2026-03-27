@@ -61,6 +61,7 @@ class PublicSection(BaseModel):
 
 class PublicFileIndex(BaseModel):
     file_name: str
+    path: str
     line_count: int
     summary_root_level: int = 2
     summary_exclude_levels: list[int] = Field(default_factory=lambda: [1])
