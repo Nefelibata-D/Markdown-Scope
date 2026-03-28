@@ -112,7 +112,6 @@ def to_public_index(index: RootIndex) -> PublicIndex:
                 path=file.path,
                 line_count=file.line_count,
                 summary_root_level=file.summary_root_level,
-                summary_exclude_levels=file.summary_exclude_levels,
                 include_excluded_ancestors_as_context=file.include_excluded_ancestors_as_context,
                 sections=[_to_public_section(s) for s in file.sections],
             )

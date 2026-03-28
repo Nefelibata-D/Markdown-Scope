@@ -15,7 +15,6 @@ def update_index(
     include_patterns: list[str] | None = None,
     progress_cb: Callable[[dict], None] | None = None,
     summary_root_level: int | None = None,
-    summary_exclude_levels: list[int] | None = None,
     include_excluded_ancestors_as_context: bool | None = None,
 ) -> RootIndex:
     reuse = build_reuse_lookup(old_index)
@@ -26,7 +25,6 @@ def update_index(
         fail_on_summary_error=False,
         progress_cb=progress_cb,
         summary_root_level=summary_root_level if summary_root_level is not None else (first_file.summary_root_level if first_file else 2),
-        summary_exclude_levels=summary_exclude_levels if summary_exclude_levels is not None else (first_file.summary_exclude_levels if first_file else [1]),
         include_excluded_ancestors_as_context=(
             include_excluded_ancestors_as_context
             if include_excluded_ancestors_as_context is not None

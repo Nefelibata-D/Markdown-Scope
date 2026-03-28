@@ -25,7 +25,6 @@ class FileIndex(BaseModel):
     sha256: str
     line_count: int
     summary_root_level: int = 2
-    summary_exclude_levels: list[int] = Field(default_factory=lambda: [1])
     include_excluded_ancestors_as_context: bool = True
     sections: list[SectionNode] = Field(default_factory=list)
 
@@ -64,7 +63,6 @@ class PublicFileIndex(BaseModel):
     path: str
     line_count: int
     summary_root_level: int = 2
-    summary_exclude_levels: list[int] = Field(default_factory=lambda: [1])
     include_excluded_ancestors_as_context: bool = True
     sections: list[PublicSection] = Field(default_factory=list)
 

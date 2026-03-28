@@ -18,7 +18,6 @@ class BuildOptions:
     fail_on_summary_error: bool = False
     progress_cb: Callable[[dict], None] | None = None
     summary_root_level: int = 2
-    summary_exclude_levels: list[int] | None = None
     include_excluded_ancestors_as_context: bool = True
 
 
@@ -92,7 +91,6 @@ def build_index(
             slug_counts,
             options.progress_cb,
             summary_root_level=options.summary_root_level,
-            summary_exclude_levels=options.summary_exclude_levels or [1],
             include_excluded_ancestors_as_context=options.include_excluded_ancestors_as_context,
             fail_on_summary_error=options.fail_on_summary_error,
         )
@@ -103,7 +101,6 @@ def build_index(
                 sha256=file_sha,
                 line_count=len(lines),
                 summary_root_level=options.summary_root_level,
-                summary_exclude_levels=options.summary_exclude_levels or [1],
                 include_excluded_ancestors_as_context=options.include_excluded_ancestors_as_context,
                 sections=section_nodes,
             )
@@ -147,7 +144,6 @@ def _convert_sections(
     progress_cb: Callable[[dict], None] | None,
     *,
     summary_root_level: int,
-    summary_exclude_levels: list[int],
     include_excluded_ancestors_as_context: bool,
     fail_on_summary_error: bool,
 ) -> list[SectionNode]:
@@ -168,7 +164,6 @@ def _convert_sections(
     groups = _build_summary_groups(
         converted,
         summary_root_level=summary_root_level,
-        summary_exclude_levels=summary_exclude_levels,
         include_excluded_ancestors_as_context=include_excluded_ancestors_as_context,
     )
     node_lookup = _build_node_lookup(converted)
@@ -351,7 +346,6 @@ def _build_summary_groups(
     roots: list[SectionNode],
     *,
     summary_root_level: int,
-    summary_exclude_levels: list[int],
     include_excluded_ancestors_as_context: bool,
 ) -> list[SummaryGroup]:
     groups: dict[str, SummaryGroup] = {}
@@ -361,15 +355,16 @@ def _build_summary_groups(
         current_summary_root: SectionNode | None,
         current_context_ancestor: SectionNode | None,
     ) -> None:
-        if node.level in summary_exclude_levels:
+        if node.level < summary_root_level:
             current_context_ancestor = node
-        if node.level == summary_root_level and node.level not in summary_exclude_levels:
+            current_summary_root = None
+        if node.level == summary_root_level:
             current_summary_root = node
 
         is_target = False
-        if node.level == summary_root_level and node.level not in summary_exclude_levels:
+        if node.level == summary_root_level:
             is_target = True
-        elif node.level > summary_root_level and current_summary_root is not None and node.level not in summary_exclude_levels:
+        elif node.level > summary_root_level and current_summary_root is not None:
             is_target = True
 
         if is_target and current_summary_root is not None:

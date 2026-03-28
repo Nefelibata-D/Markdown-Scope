@@ -145,7 +145,6 @@ def build_cmd(
     system_prompt: Optional[str] = typer.Option(None, help="AI system prompt."),
     user_prompt: Optional[str] = typer.Option(None, help="AI user prompt template."),
     summary_root_level: Optional[int] = typer.Option(None, help="Summary root heading level, default 2."),
-    summary_exclude_levels: Optional[list[int]] = typer.Option(None, help="Heading levels used as context only."),
     include_excluded_ancestors_as_context: Optional[bool] = typer.Option(
         None, help="Include excluded ancestors as context in AI request."
     ),
@@ -165,7 +164,6 @@ def build_cmd(
     system_prompt = cfg_value(cfg, "system_prompt", system_prompt, None)
     user_prompt = cfg_value(cfg, "user_prompt", user_prompt, None)
     summary_root_level = int(cfg_value(cfg, "summary_root_level", summary_root_level, 2))
-    summary_exclude_levels = cfg_value(cfg, "summary_exclude_levels", summary_exclude_levels, [1])
     include_excluded_ancestors_as_context = bool(
         cfg_value(cfg, "include_excluded_ancestors_as_context", include_excluded_ancestors_as_context, True)
     )
@@ -191,7 +189,6 @@ def build_cmd(
             include_patterns=include,
             progress_cb=_build_progress_cb(),
             summary_root_level=summary_root_level,
-            summary_exclude_levels=summary_exclude_levels,
             include_excluded_ancestors_as_context=include_excluded_ancestors_as_context,
         ),
         summary_provider,
@@ -217,7 +214,6 @@ def update_cmd(
     system_prompt: Optional[str] = typer.Option(None),
     user_prompt: Optional[str] = typer.Option(None),
     summary_root_level: Optional[int] = typer.Option(None, help="Summary root heading level, default 2."),
-    summary_exclude_levels: Optional[list[int]] = typer.Option(None, help="Heading levels used as context only."),
     include_excluded_ancestors_as_context: Optional[bool] = typer.Option(
         None, help="Include excluded ancestors as context in AI request."
     ),
@@ -236,7 +232,6 @@ def update_cmd(
     system_prompt = cfg_value(cfg, "system_prompt", system_prompt, None)
     user_prompt = cfg_value(cfg, "user_prompt", user_prompt, None)
     summary_root_level = cfg_value(cfg, "summary_root_level", summary_root_level, None)
-    summary_exclude_levels = cfg_value(cfg, "summary_exclude_levels", summary_exclude_levels, None)
     include_excluded_ancestors_as_context = cfg_value(
         cfg,
         "include_excluded_ancestors_as_context",
@@ -265,7 +260,6 @@ def update_cmd(
         include_patterns=include,
         progress_cb=_build_progress_cb(),
         summary_root_level=summary_root_level,
-        summary_exclude_levels=summary_exclude_levels,
         include_excluded_ancestors_as_context=include_excluded_ancestors_as_context,
     )
     write_index(idx_path, updated)

@@ -57,7 +57,6 @@ Summary-related options:
 - `--system-prompt`
 - `--user-prompt`
 - `--summary-root-level`
-- `--summary-exclude-levels`
 - `--include-excluded-ancestors-as-context`
 
 Example:
@@ -230,7 +229,6 @@ system_prompt = "You are a concise technical summarizer."
 user_prompt = "Summarize in Chinese:\n{content}"
 
 summary_root_level = 2
-summary_exclude_levels = [1]
 include_excluded_ancestors_as_context = true
 
 format = "json"

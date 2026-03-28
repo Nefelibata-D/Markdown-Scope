@@ -1,0 +1,80 @@
+[global]
+# Whether to overwrite existing public index file during `build`.
+# true: overwrite directly; false: keep existing index and fail if file exists.
+overwrite = true
+
+# Markdown include globs under --root. Supports recursive patterns.
+# Example: ["*.md", "**/*.md"] means root + all subdirectories.
+include = ["*.md", "**/*.md"]
+
+# Summary target start level (core rule):
+# - headings with level < summary_root_level are treated as shared context only
+# - headings with level >= summary_root_level are summary targets
+#
+# Examples:
+# - summary_root_level = 1:
+#   `#` / `##` / `###` ... all can receive summaries.
+# - summary_root_level = 2:
+#   `#` is context-only; `##` and deeper levels receive summaries.
+# - summary_root_level = 3:
+#   `#` and `##` are context-only; `###` and deeper levels receive summaries.
+# This is the single source of truth for summary scope.
+summary_root_level = 1
+
+# If true, excluded ancestor headings can be included as shared context in AI prompt.
+include_excluded_ancestors_as_context = true
+
+# Summary provider name. Current supported value: "openai-compatible".
+provider = "openai-compatible"
+
+# OpenAI-compatible API base URL.
+api_base = "https://api.openai.com/v1"
+
+# API key for summary provider.
+# Keep it in env/secret manager for production usage.
+api_key = "YOUR_API_KEY_HERE"
+
+# Model name used for summary generation.
+model = "openai/gpt-5-mini"
+
+# Per-request HTTP timeout (seconds).
+api_timeout_seconds = 60
+
+# Max AI HTTP requests per minute (RPM, sliding window).
+# Includes retries.
+api_requests_per_minute = 10
+
+# System prompt injected into AI request.
+system_prompt = """
+You summarize Markdown sections for retrieval.
+Return strict JSON only.
+"""
+
+# User prompt template injected into AI request.
+# Supported placeholders:
+# {TOP_LEVEL_TITLE}, {FILE_PATH}, {MARKDOWN_SUBTREE}, {SECTION_ID_MAP_TEXT}
+# (and compatibility aliases: {title}, {top_title}, {file_path}, {content},
+# {TOP_LEVEL_TITLE}, {FILE_PATH}, {MARKDOWN_SUBTREE}, {SECTION_ID_MAP_TEXT})
+user_prompt = """
+Summarize target Markdown headings.
+
+Context root title: {TOP_LEVEL_TITLE}
+File: {FILE_PATH}
+
+Markdown content:
+{MARKDOWN_SUBTREE}
+
+SECTION_ID_MAP:
+{SECTION_ID_MAP_TEXT}
+"""
+
+# Default CLI output format when --format is not passed.
+# Common values: "json", "text", "markdown" (depends on command support).
+format = "text"
+
+# Max lines returned by read commands (e.g., read-lines/read-section).
+max_lines = 200
+
+# Default search field for `search` command.
+# all | title | path | summary
+field = "all"
