@@ -10,7 +10,20 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-  { name = "markdown-scope contributors" }
+  { name = "Markdown-Scope Contributors" }
+]
+keywords = ["markdown", "cli", "indexing", "ai", "retrieval", "agent"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Text Processing :: Markup :: Markdown"
 ]
 dependencies = [
   "typer>=0.12.3",
@@ -19,8 +32,13 @@ dependencies = [
   "tomli>=2.0.1; python_version < '3.11'"
 ]
 
+[project.urls]
+Homepage = "https://github.com/Nefelibata-D/Markdown-Scope"
+Repository = "https://github.com/Nefelibata-D/Markdown-Scope"
+Issues = "https://github.com/Nefelibata-D/Markdown-Scope/issues"
+
 [project.scripts]
-md-scope = "src.cli:run"
+md-scope = "markdown_scope.cli:run"
 
 [project.optional-dependencies]
 dev = [
@@ -29,7 +47,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["test", "tests"]
 addopts = "-q"
 pythonpath = ["src"]
 
@@ -40,4 +58,4 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/markdown_scope"]

@@ -19,6 +19,7 @@ Use `pip`:
 ```bash
 pip install .
 md-scope --help
+python -m markdown_scope --help
 ```
 
 ## What It Generates
