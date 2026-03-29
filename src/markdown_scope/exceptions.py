@@ -14,10 +14,13 @@ class SectionNotFoundError(MDScopeError):
     """Raised when section id does not exist."""
 
 
+class SectionAmbiguousError(MDScopeError):
+    """Raised when a section id maps to multiple sections."""
+
+
 class ScopePathError(MDScopeError):
     """Raised when path is outside root scope."""
 
 
 class SummaryProviderError(MDScopeError):
     """Raised when summary generation fails."""
-

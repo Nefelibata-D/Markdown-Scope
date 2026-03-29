@@ -30,6 +30,15 @@ class SummaryGroup:
     top_target_ids: list[str]
 
 
+@dataclass
+class _PreparedFile:
+    rel_path: str
+    file_path: Path
+    text: str
+    lines: list[str]
+    parsed_roots: list[ParsedSection]
+
+
 def collect_markdown_files(root: Path, include_patterns: list[str] | None = None) -> list[Path]:
     if not root.exists():
         raise MDScopeError(f"Root path does not exist: {root}")
@@ -56,9 +65,11 @@ def build_index(
     built_files: list[FileIndex] = []
     stats = IndexStats(file_count=len(files), section_count=0, summary_failures=0)
     reuse_lookup = existing_reuse_lookup or {}
+    global_used_ids: set[str] = set()
+    prepared_files: list[_PreparedFile] = []
+    global_slug_counts: dict[str, int] = {}
 
     for file_path in files:
-        current_index = len(built_files) + 1
         rel_path = relative_posix(options.root, file_path)
         try:
             text = file_path.read_text(encoding="utf-8")
@@ -66,29 +77,41 @@ def build_index(
             raise MDScopeError(f"Encoding error when reading markdown file: {file_path}") from exc
         lines = text.splitlines()
         parsed_roots = parse_markdown_sections(lines, file_path.name)
+        _accumulate_slug_counts(parsed_roots, global_slug_counts)
+        prepared_files.append(
+            _PreparedFile(
+                rel_path=rel_path,
+                file_path=file_path,
+                text=text,
+                lines=lines,
+                parsed_roots=parsed_roots,
+            )
+        )
+
+    for prepared in prepared_files:
+        current_index = len(built_files) + 1
         if options.progress_cb:
             options.progress_cb(
                 {
                     "type": "file_start",
                     "file_index": current_index,
                     "file_total": len(files),
-                    "file_path": rel_path,
-                    "line_count": len(lines),
-                    "top_level_count": len(parsed_roots),
-                    "section_count": _count_parsed_sections(parsed_roots),
+                    "file_path": prepared.rel_path,
+                    "line_count": len(prepared.lines),
+                    "top_level_count": len(prepared.parsed_roots),
+                    "section_count": _count_parsed_sections(prepared.parsed_roots),
                 }
             )
-        slug_counts = _collect_slug_counts(parsed_roots)
-        file_sha = sha256_text(text)
+        file_sha = sha256_text(prepared.text)
         section_nodes = _convert_sections(
-            parsed_roots,
-            lines,
-            rel_path,
+            prepared.parsed_roots,
+            prepared.lines,
+            prepared.rel_path,
             summary_provider,
             reuse_lookup,
             stats,
-            set(),
-            slug_counts,
+            global_used_ids,
+            global_slug_counts,
             options.progress_cb,
             summary_root_level=options.summary_root_level,
             include_excluded_ancestors_as_context=options.include_excluded_ancestors_as_context,
@@ -97,9 +120,9 @@ def build_index(
         stats.section_count += _count_sections(section_nodes)
         built_files.append(
             FileIndex(
-                path=rel_path,
+                path=prepared.rel_path,
                 sha256=file_sha,
-                line_count=len(lines),
+                line_count=len(prepared.lines),
                 summary_root_level=options.summary_root_level,
                 include_excluded_ancestors_as_context=options.include_excluded_ancestors_as_context,
                 sections=section_nodes,
@@ -111,7 +134,7 @@ def build_index(
                     "type": "file_done",
                     "file_index": current_index,
                     "file_total": len(files),
-                    "file_path": rel_path,
+                    "file_path": prepared.rel_path,
                 }
             )
 
@@ -140,7 +163,7 @@ def _convert_sections(
     reuse_lookup: dict[tuple[str, tuple[str, ...], str], tuple[str, str | None]],
     stats: IndexStats,
     used_ids: set[str],
-    slug_counts: dict[str, int],
+    global_slug_counts: dict[str, int],
     progress_cb: Callable[[dict], None] | None,
     *,
     summary_root_level: int,
@@ -156,7 +179,7 @@ def _convert_sections(
             rel_path,
             reuse_lookup,
             used_ids,
-            slug_counts,
+            global_slug_counts,
         )
         converted.append(node)
         pending_map.update(pending)
@@ -228,19 +251,34 @@ def _build_section_tree(
     rel_path: str,
     reuse_lookup: dict[tuple[str, tuple[str, ...], str], tuple[str, str | None]],
     used_ids: set[str],
-    slug_counts: dict[str, int],
+    global_slug_counts: dict[str, int],
 ) -> tuple[SectionNode, dict[str, tuple[str, str]]]:
     content = _section_content(lines, section.start, section.end)
     content_hash = sha256_text(content)
     key = (rel_path, tuple(section.heading_path), content_hash)
     pending: dict[str, tuple[str, str]] = {}
+    base_slug = slugify_title(section.title)
+    force_suffix = global_slug_counts.get(base_slug, 0) > 1
     if key in reuse_lookup:
-        section_id, summary = reuse_lookup[key]
-        used_ids.add(section_id)
+        reused_id, summary = reuse_lookup[key]
+        if reused_id in used_ids or force_suffix:
+            # Repair duplicate ids from old/bad index during update.
+            section_id = section_id_from_title(
+                section.title,
+                used_ids,
+                relative_path=rel_path,
+                force_suffix=force_suffix,
+            )
+        else:
+            section_id = reused_id
+            used_ids.add(section_id)
     else:
-        base_slug = slugify_title(section.title)
-        force_suffix = slug_counts.get(base_slug, 0) > 1
-        section_id = section_id_from_title(section.title, used_ids, force_suffix=force_suffix)
+        section_id = section_id_from_title(
+            section.title,
+            used_ids,
+            relative_path=rel_path,
+            force_suffix=force_suffix,
+        )
         summary = ""
         pending[section_id] = (section.title, content)
     children_nodes: list[SectionNode] = []
@@ -251,7 +289,7 @@ def _build_section_tree(
             rel_path,
             reuse_lookup,
             used_ids,
-            slug_counts,
+            global_slug_counts,
         )
         children_nodes.append(child_node)
         pending.update(child_pending)
@@ -300,25 +338,18 @@ def _section_content(lines: list[str], start: int, end: int) -> str:
     return "\n".join(lines[start - 1 : end])
 
 
-def _collect_slug_counts(sections: list[ParsedSection]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-
-    def walk(nodes: list[ParsedSection]) -> None:
-        for node in nodes:
-            base = slugify_title(node.title)
-            counts[base] = counts.get(base, 0) + 1
-            if node.children:
-                walk(node.children)
-
-    walk(sections)
-    return counts
-
-
 def _count_parsed_sections(nodes: list[ParsedSection]) -> int:
     total = 0
     for n in nodes:
         total += 1 + _count_parsed_sections(n.children)
     return total
+
+
+def _accumulate_slug_counts(nodes: list[ParsedSection], counts: dict[str, int]) -> None:
+    for node in nodes:
+        base = slugify_title(node.title)
+        counts[base] = counts.get(base, 0) + 1
+        _accumulate_slug_counts(node.children, counts)
 
 
 def _build_node_lookup(nodes: list[SectionNode]) -> dict[str, SectionNode]:

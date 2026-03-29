@@ -87,7 +87,7 @@ uv run md-scope update --root ./examples --config ./md-scope.toml
 
 ### `outline`
 
-Read index outline (tree/catalog view).  
+Read index outline (tree view).  
 Default target behavior: if `SKILL.md` exists, it is preferred when no target is provided.
 
 Options:
@@ -105,10 +105,6 @@ uv run md-scope outline --root ./examples --format json
 uv run md-scope outline --root ./examples --target references --format text
 uv run md-scope outline --root ./examples --format json --full
 ```
-
-### `catalog`
-
-Alias of `outline` (same behavior and parameters).
 
 ### `search`
 

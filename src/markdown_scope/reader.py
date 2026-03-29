@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .exceptions import InvalidRangeError, MDScopeError, SectionNotFoundError
+from .exceptions import InvalidRangeError, MDScopeError, SectionAmbiguousError, SectionNotFoundError
 from .index_models import PublicIndex, PublicSection, RootIndex
 
 
@@ -43,9 +43,12 @@ def read_section(
     section_id: str,
     max_lines: int,
 ) -> dict:
-    section, file_name = _find_section(index, section_id)
-    if not section:
+    matches = _find_sections(index, section_id)
+    if not matches:
         raise SectionNotFoundError(f"Section id not found: {section_id}")
+    if len(matches) > 1:
+        raise SectionAmbiguousError(_format_ambiguity_error(section_id, matches))
+    section, file_name = matches[0]
     file_path = root / file_name
     try:
         lines = file_path.read_text(encoding="utf-8").splitlines()
@@ -100,8 +103,14 @@ def read_sections_contextual(
     missing = [sec_id for sec_id in section_ids if sec_id not in id_map]
     if missing:
         raise SectionNotFoundError(f"Section id not found: {', '.join(missing)}")
+    ambiguous = [sec_id for sec_id in section_ids if len(id_map.get(sec_id, [])) > 1]
+    if ambiguous:
+        details: list[str] = []
+        for sec_id in ambiguous:
+            details.append(_format_ambiguity_error(sec_id, [(ref.node, ref.file_name) for ref in id_map[sec_id]]))
+        raise SectionAmbiguousError("\n".join(details))
 
-    requested_refs = [id_map[sec_id] for sec_id in section_ids]
+    requested_refs = [id_map[sec_id][0] for sec_id in section_ids]
     per_file: dict[str, list[_NodeRef]] = {}
     for ref in requested_refs:
         per_file.setdefault(ref.file_name, []).append(ref)
@@ -155,12 +164,13 @@ def read_sections_contextual(
     return {"requested_ids": section_ids, "files": file_results}
 
 
-def _find_section(index: PublicIndex | RootIndex, section_id: str) -> tuple[PublicSection | None, str]:
+def _find_sections(index: PublicIndex | RootIndex, section_id: str) -> list[tuple[PublicSection, str]]:
+    matches: list[tuple[PublicSection, str]] = []
     for file in index.files:
-        found = _find_in_nodes(file.sections, section_id)
-        if found:
-            return found, _file_path_from_index_file(file)
-    return None, ""
+        file_name = _file_path_from_index_file(file)
+        for found in _find_in_nodes_all(file.sections, section_id):
+            matches.append((found, file_name))
+    return matches
 
 
 def _file_path_from_index_file(file) -> str:
@@ -173,19 +183,18 @@ def _file_path_from_index_file(file) -> str:
     raise MDScopeError("Index file entry is missing file path field.")
 
 
-def _find_in_nodes(nodes: list[PublicSection], section_id: str) -> PublicSection | None:
+def _find_in_nodes_all(nodes: list[PublicSection], section_id: str) -> list[PublicSection]:
+    matches: list[PublicSection] = []
     for node in nodes:
         if node.id == section_id:
-            return node
-        found = _find_in_nodes(node.children, section_id)
-        if found:
-            return found
-    return None
+            matches.append(node)
+        matches.extend(_find_in_nodes_all(node.children, section_id))
+    return matches
 
 
-def _build_ref_index(index: PublicIndex | RootIndex) -> tuple[list[str], dict[str, _NodeRef]]:
+def _build_ref_index(index: PublicIndex | RootIndex) -> tuple[list[str], dict[str, list[_NodeRef]]]:
     files: list[str] = []
-    id_map: dict[str, _NodeRef] = {}
+    id_map: dict[str, list[_NodeRef]] = {}
     for file in index.files:
         file_name = _file_path_from_index_file(file)
         files.append(file_name)
@@ -193,7 +202,7 @@ def _build_ref_index(index: PublicIndex | RootIndex) -> tuple[list[str], dict[st
         stack = list(roots)
         while stack:
             ref = stack.pop()
-            id_map[ref.node.id] = ref
+            id_map.setdefault(ref.node.id, []).append(ref)
             stack.extend(ref.children)
     return files, id_map
 
@@ -297,3 +306,11 @@ def _count_rendered_lines(lines: list[str], chunks: list[tuple[int, int]]) -> in
         if idx < len(chunks) - 1:
             total += 1
     return total
+
+
+def _format_ambiguity_error(section_id: str, matches: list[tuple[PublicSection, str]]) -> str:
+    details = [
+        f"- file={file_name}, title={section.title}, lines={section.start}-{section.end}"
+        for section, file_name in matches
+    ]
+    return f"Section id is ambiguous: {section_id}\n" + "\n".join(details)

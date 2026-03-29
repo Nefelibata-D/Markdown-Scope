@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import secrets
 from pathlib import Path
 from typing import Any
 
@@ -41,25 +40,37 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def section_id_from_title(title: str, used_ids: set[str], *, force_suffix: bool = False) -> str:
-    base = slugify_title(title)
-    if force_suffix:
-        while True:
-            suffix = secrets.token_hex(2)
-            candidate = f"{base}-{suffix}"
-            if candidate not in used_ids:
-                used_ids.add(candidate)
-                return candidate
+def stable_path_hash4(relative_path: str) -> str:
+    return hashlib.sha256(relative_path.encode("utf-8")).hexdigest()[:4]
 
-    candidate = base
-    if candidate in used_ids:
-        while True:
-            suffix = secrets.token_hex(2)
-            candidate = f"{base}-{suffix}"
-            if candidate not in used_ids:
-                break
-    used_ids.add(candidate)
-    return candidate
+
+def section_id_from_title(title: str, used_ids: set[str], *, relative_path: str, force_suffix: bool = False) -> str:
+    base = slugify_title(title)
+    if not force_suffix and base not in used_ids:
+        used_ids.add(base)
+        return base
+
+    path_hash = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
+    candidate = f"{base}-{path_hash[:4]}"
+    if candidate not in used_ids:
+        used_ids.add(candidate)
+        return candidate
+
+    # Deterministically extend hash length if 4-char suffix still collides.
+    for n in range(5, len(path_hash) + 1):
+        candidate = f"{base}-{path_hash[:n]}"
+        if candidate not in used_ids:
+            used_ids.add(candidate)
+            return candidate
+
+    # Final deterministic fallback.
+    counter = 2
+    while True:
+        candidate = f"{base}-{path_hash}-{counter}"
+        if candidate not in used_ids:
+            used_ids.add(candidate)
+            return candidate
+        counter += 1
 
 
 def slugify_title(title: str) -> str:
