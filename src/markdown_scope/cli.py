@@ -28,25 +28,21 @@ from .viewer import render_catalog_markdown, render_tree_text, select_view
 app = typer.Typer(help="markdown-scope CLI: build structured markdown index and read selectively.")
 
 
+def _echo_safe_text(text: str) -> None:
+    try:
+        typer.echo(text)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or "utf-8"
+        safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        typer.echo(safe)
+
+
 def _emit(data, output_format: str = "json") -> None:
     if output_format == "json":
         typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
-    elif output_format == "text":
+    elif output_format in {"text", "markdown"}:
         text = data if isinstance(data, str) else str(data)
-        try:
-            typer.echo(text)
-        except UnicodeEncodeError:
-            encoding = sys.stdout.encoding or "utf-8"
-            safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
-            typer.echo(safe)
-    elif output_format == "markdown":
-        text = data if isinstance(data, str) else str(data)
-        try:
-            typer.echo(text)
-        except UnicodeEncodeError:
-            encoding = sys.stdout.encoding or "utf-8"
-            safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
-            typer.echo(safe)
+        _echo_safe_text(text)
     else:
         raise typer.BadParameter(f"Unsupported format: {output_format}")
 
@@ -302,32 +298,6 @@ def _outline_impl(
 
 @app.command("outline")
 def outline_cmd(
-    config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
-    root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
-    index: Optional[Path] = typer.Option(None),
-    target: Optional[str] = typer.Option(None, help="Relative file or directory under root/index scope"),
-    full: bool = typer.Option(False, help="Only for JSON: include line_count/level/start/end."),
-    with_summary: bool = typer.Option(
-        False,
-        "--with_summary",
-        "--with-summary",
-        help="Include summary text in text/markdown output.",
-    ),
-    output_format: Optional[str] = typer.Option(None, "--format"),
-) -> None:
-    _outline_impl(
-        config=config,
-        root=root,
-        index=index,
-        target=target,
-        full=full,
-        with_summary=with_summary,
-        output_format=output_format,
-    )
-
-
-@app.command("catalog")
-def catalog_cmd(
     config: Optional[Path] = typer.Option(None, help="Path to TOML config file"),
     root: Optional[Path] = typer.Option(None, help="Markdown root directory"),
     index: Optional[Path] = typer.Option(None),

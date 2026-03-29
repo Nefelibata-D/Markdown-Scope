@@ -27,5 +27,32 @@ jobs:
       - name: Build
         run: uv build
 
+      - name: Read package metadata
+        id: meta
+        run: |
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          import os
+
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          project = data["project"]
+          name = project["name"]
+          version = project["version"]
+          with open(Path(os.environ["GITHUB_OUTPUT"]), "a", encoding="utf-8") as fh:
+              fh.write(f"name={name}\n")
+              fh.write(f"version={version}\n")
+          PY
+
+      - name: Validate tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          EXPECTED_TAG="v${VERSION}"
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "Tag/version mismatch: tag=$TAG, expected=$EXPECTED_TAG"
+            exit 1
+          fi
+
       - name: Publish to PyPI
         run: uv publish
