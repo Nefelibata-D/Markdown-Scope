@@ -1,0 +1,66 @@
+name: Auto Tag And Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  tag_and_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from pyproject.toml
+        id: meta
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          version = data["project"]["version"]
+          tag = f"v{version}"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"version={version}\n")
+              fh.write(f"tag={tag}\n")
+          print(f"version={version}, tag={tag}")
+          PY
+
+      - name: Check if tag already exists
+        id: check
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}$"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag already exists: ${TAG}"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag does not exist yet: ${TAG}"
+          fi
+
+      - name: Create and push tag
+        if: steps.check.outputs.exists != 'true'
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.exists != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Automated release for $TAG"
